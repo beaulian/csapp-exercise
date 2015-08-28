@@ -393,7 +393,7 @@ void sigchld_handler(int sig)
     int status, child_sig;
     pid_t pid;
     struct job_t *job;
-    //WUNTRACED | WNOHANG很重要,不要傻等,不然遇到直接cat的命令会一只阻塞
+    //WUNTRACED | WNOHANG很重要,不要傻等,不然遇到直接cat的命令会一直阻塞
     while ((pid = waitpid(-1, &status, WUNTRACED | WNOHANG)) > 0) {
         //printf("Handler child %d\n", (int) pid);
         if (WIFSTOPPED(status)) {  //子进程处理停止信号(这里假设所有的停止信号都是SIGTSTP,即ctrl-z)
