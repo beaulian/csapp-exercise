@@ -259,9 +259,9 @@ int parseline(const char *cmdline, char **argv)
     }
 
     while (delim) {
-	argv[argc++] = buf;
-	*delim = '\0';
-	buf = delim + 1;
+	argv[argc++] = buf; /* 以ls -l为例,此处buf是"ls-l",argv[0]为"ls -l"*/
+	*delim = '\0';  /* delim从" -l"变为 " ", buf 变为"ls",argv[0]变为"" */
+	buf = delim + 1; /* buf 变为 "-l" */
 	while (*buf && (*buf == ' ')) /* ignore spaces */
 	       buf++;
 
