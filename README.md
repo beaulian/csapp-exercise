@@ -1,2 +1,2 @@
 # csapp-exercise
-for learning &lt;CSAPP>
+for learning CSAPP
