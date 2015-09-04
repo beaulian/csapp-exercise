@@ -1,0 +1,24 @@
+<component name="ProjectDictionaryState">
+  <dictionary name="gavin">
+    <words>
+      <w>csapp</w>
+      <w>envp</w>
+      <w>errno</w>
+      <w>execve</w>
+      <w>fcntl</w>
+      <w>fileno</w>
+      <w>fprintf</w>
+      <w>fstat</w>
+      <w>getdtablesize</w>
+      <w>getpid</w>
+      <w>maxbuf</w>
+      <w>printf</w>
+      <w>setsid</w>
+      <w>stderr</w>
+      <w>stdin</w>
+      <w>strcmp</w>
+      <w>unistd</w>
+      <w>waitpid</w>
+    </words>
+  </dictionary>
+</component>
