@@ -1,0 +1,15 @@
+HTTP/1.0 200 OK
+Server: Tiny Web Server
+Content-length: 190
+Content-type: text/html
+
+<!DOCTYPE html>
+<html>
+    <head>
+        <meta charset="UTF-8">
+        <title>Tiny</title>
+    </head>
+<body>
+    <p style="align:center">欢迎访问Tiny Web服务器!</p>
+</body>
+</html>
