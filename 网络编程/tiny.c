@@ -1,20 +1,18 @@
 #include "csapp.h"
-
-/* 水平不够,POST功能未完成,还请看到的大神能指点一下 */
-
 /*
- * 说明:在用telnet时,Host头域指定请求资源的Intenet主机和端口号
+ *说明:在用telnet时,Host头域指定请求资源的Intenet主机和端口号
  * 必须表示请求url的原始服务器或网关的位置。
  * HTTP/1.1请求必须包含主机头域，否则系统会以400状态码返回。
  */
 
 void handler(int sig);
 void doit(int fd);
-void read_requesthdrs(rio_t *rp);
+void read_requesthdrs(rio_t *rp, int *length, int is_post_method);
 int parse_uri(char *uri, char *filename, char *cgiargs);
 void serve_static(int fd, char *filename, int filesize, int is_head_method);
 void get_filetype(char *filename, char *filetype);
-void serve_dynamic(int fd, char *filename, char *cgiargs, int is_head_method, int is_post_method);
+void serve_dynamic(int fd, char *filename, char *cgiargs, int is_head_method);
+void post_dynamic(int fd, char *filename, int contentLength,rio_t *rp);
 void clienterror(int fd, char *cause, char *errnum, char *shortmsg, char *longmsg);
 
 int main(int argc, char **argv, char **environ)
@@ -54,14 +52,14 @@ void handler(int sig)
 
 void doit(int fd)
 {
-    int is_static, head = 0, post = 0;
+    int is_static, head = 0, post = 0, contentLength = 0;
     struct stat sbuf;
     char buf[MAXLINE], method[MAXLINE], uri[MAXLINE], version[MAXLINE];
     char filename[MAXLINE], cgiargs[MAXLINE];
     rio_t rio;
 
     Rio_readinitb(&rio, fd); /* 初始化缓冲区 */
-    Rio_readlineb(&rio, buf, MAXLINE); /* 将缓冲区内的内容读到buf里 */
+    Rio_readlineb(&rio, buf, MAXLINE); /* 将缓冲区内的请求行(一行)内容读到buf里 */
 
     /* 读请求行 */
     sscanf(buf, "%s %s %s", method, uri, version);
@@ -80,7 +78,7 @@ void doit(int fd)
         return;
     }
 
-    read_requesthdrs(&rio);   /* 读取并忽略请求报头 */
+    read_requesthdrs(&rio, &contentLength, post);   /* 读取并忽略请求报头 */
 
     /* 解析来自GET请求的URI */
     is_static = parse_uri(uri, filename, cgiargs);   /* is_static判断请求的文件是否为静态文件 */
@@ -102,7 +100,10 @@ void doit(int fd)
             clienterror(fd, filename, "403", "Forbidden", "Tiny couldn't run the CGI program");
             return;
         }
-        serve_dynamic(fd, filename, cgiargs, head, post);       /* 处理动态内容 */
+        if (!post)
+            serve_dynamic(fd, filename, cgiargs, head);       /* 处理动态内容 */
+        else
+            post_dynamic(fd, filename, contentLength, &rio);
     }
 }
 
@@ -129,14 +130,26 @@ void clienterror(int fd, char *cause, char *errnum, char *shortmsg, char *longms
 }
 
 
-void read_requesthdrs(rio_t *rp) {
+void read_requesthdrs(rio_t *rp, int *length, int is_post_method) {
     char buf[MAXLINE];
+    char *p;
 
     Rio_readlineb(rp, buf, MAXLINE);
-    while (strcmp(buf, "\r\n")) {    /* 如果读到\r\n则结束循环 */
+    while (strcmp(buf, "\r\n")) {    /* 如果读到\r\n则结束循环,因为请求头以单独的\r\n一行结束 */
         Rio_readlineb(rp, buf, MAXLINE);
+        if (is_post_method){
+            if(strncasecmp(buf,"Content-Length:",15)==0) {
+                p=&buf[15];
+                p+=strspn(p," \t");
+                *length=atol(p);
+            }
+        }
         printf("%s", buf);
+        //printf("%d", *length);
     }
+    //Rio_readlineb(rp, buf, MAXLINE);
+    //Rio_readlineb(rp, buf, MAXLINE);
+
     return;
 }
 
@@ -218,7 +231,7 @@ void get_filetype(char *filename, char *filetype)
 }
 
 
-void serve_dynamic(int fd, char *filename, char *cgiargs, int is_head_method, int is_post_method)
+void serve_dynamic(int fd, char *filename, char *cgiargs, int is_head_method)
 {
     char buf[MAXLINE], *emptylist[] = {NULL};
 
@@ -233,21 +246,68 @@ void serve_dynamic(int fd, char *filename, char *cgiargs, int is_head_method, in
     Signal(SIGCHLD, handler);
 
     if (Fork() == 0) {
-        if (!is_post_method) {
-            setenv("QUERY_STRING", cgiargs, 1);  /* 只对当前进程有效 */
-            Dup2(fd, STDOUT_FILENO);
-            Execve(filename, emptylist, environ);
-        }
-        else {
-            //printf("yes\n");
-
-            Dup2(fd, STDOUT_FILENO);
-            Dup2(fd, STDIN_FILENO);
-            Execve(filename, emptylist, environ);
-        }
+        setenv("QUERY_STRING", cgiargs, 1);  /* 只对当前进程有效 */
+        Dup2(fd, STDOUT_FILENO);
+        Execve(filename, emptylist, environ);
 
     }
     //Wait(NULL);  /* 父进程监听子进程 */
 }
 
+/* 解决CGI读取POST参数的关键在于这个stdin该指向哪里呢,
+ * 首先Dup2(fd, 0)是错的,CGI程序不可能从套接字流中读取,
+ * 因为已经全部保存在rio缓冲区了,所以只能从缓冲区读取
+ * 剩下的请求主体,而CGI程序如何和原来的进程联系从而获
+ * 得请求主体呢?答案就是管道,利用dup2函数将标准输入流
+ * 重定向到管道的读端,而缓冲区的数据则写到管道写端.花
+ * 了我好长时间理解 
+ */
 
+void post_dynamic(int fd, char *filename, int contentLength,rio_t *rp)
+{
+    char buf[MAXLINE], data[MAXLINE], length[32], *emptylist[] = {NULL};
+    int pipe_fd[2];
+
+    sprintf(length,"%d",contentLength);
+    memset(data,0,MAXLINE);
+
+    Signal(SIGCHLD, handler);
+
+     /* 创建管道 */
+    if (pipe(pipe_fd) < 0) {
+        perror("pipe failed\n");
+        exit(errno);
+    }
+
+    if (Fork() == 0) {   /* 创建子进程 */
+        Close(pipe_fd[0]);  /* 关闭管道读端 */
+        Rio_readnb(rp, data, contentLength);  /* 从缓冲区中读取数据,此时缓冲区的内容中请求头已经
+                                               * 被read_requesthdrs函数读掉了,剩下的是请求主体内容
+                                               * 但是不要使用Rio_readlineb,因为这个函数一次只能一行
+                                               * 用Rio_readnb读取全部请求主体
+                                               */
+        Rio_writen(pipe_fd[1], data, contentLength); /* 将数据写进管道 */
+        exit(0); /* 第一个子进程完成任务,退出 */
+    }
+    else {
+        /* 打印一部分HTTP响应信息 */
+        sprintf(buf, "HTTP/1.0 200 OK\r\n");
+        sprintf(buf, "%sServer: Tiny Web Server\r\n",  buf);
+        Rio_writen(fd, buf, strlen(buf));
+
+        if (Fork() == 0) {
+            Close(pipe_fd[1]);   /* 子进程关闭管道写端 */
+            Dup2(pipe_fd[0], STDIN_FILENO); /* 让子进程不再从标准输入读取,而是从管道读取 */
+            Close(pipe_fd[0]);  /* 关闭管道读端 */
+            setenv("CONTENT_LENGTH", length, 1);
+            Dup2(fd, STDOUT_FILENO); /* 重定向标准输出到客户端,让输出指向已连接的描述符 */
+            Execve(filename, emptylist, environ);
+        }
+        else {
+            /* 父进程关闭读端和写端 */
+            close(pipe_fd[0]);
+            close(pipe_fd[1]);
+        }
+    }
+
+}
