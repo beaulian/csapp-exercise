@@ -32,8 +32,16 @@ int main(int argc, char **argv, char **environ)
     while (1) {
         clientlen = sizeof(clientaddr);
         connfd = Accept(listenfd, (SA *)&clientaddr, &clientlen);
-        doit(connfd);
-        Close(connfd);
+	
+	/* fork子进程处理请求 */
+	if (Fork() == 0) {
+	    Close(listenfd);  /* 关闭监听描述符 */
+	    doit(connfd);     
+            Close(connfd);    /* 关闭已连接描述符 */
+	    exit(0);
+	}
+	Close(connfd);   /* 父进程关闭已连接描述符,此时文件表项的引用计数为0,到客户端的连接终止 */
+        
     }
     exit(0);
 }
