@@ -33,6 +33,8 @@ int main(int argc, char **argv, char **environ)
         clientlen = sizeof(clientaddr);
         connfd = Accept(listenfd, (SA *)&clientaddr, &clientlen);
 	
+	Signal(SIGCHLD, handler);	
+
 	/* fork子进程处理请求 */
 	if (Fork() == 0) {
 	    Close(listenfd);  /* 关闭监听描述符 */
