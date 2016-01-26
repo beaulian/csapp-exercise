@@ -1,2 +1,2 @@
-# csapp-exercise
-for learning CSAPP
+# 说明
+> 以上代码是我在学习《深入理解计算机系统》的时候做的课后练习，两个重要的实验是异常控制流的Shell实验和网络编程的Tiny Web Server实验，这两个实验值得认真完成，完成后收获会很大
